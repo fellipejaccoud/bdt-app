@@ -158,6 +158,12 @@
 
   const vehicles = [{ plate: 'TTV-4J54', model: 'Fiat Cronos' }];
 
+  // Cache local (só neste navegador) de nome, matrícula e última placa usada —
+  // conveniência de preenchimento, não é fonte de dados do boletim (isso vai pro banco).
+  const LS_KEYS = { driverName: 'bdt:driverName', driverReg: 'bdt:driverReg', lastPlate: 'bdt:lastPlate' };
+  function lsGet(key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } }
+  function lsSet(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+
   // Mapeia os rótulos do checklist (usados na tela e no PDF) para as chaves
   // snake_case do JSONB no banco (ver bdt_schema.sql).
   const CHECKLIST_KEY_MAP = {
@@ -537,15 +543,16 @@
       state.plate = e.target.value;
       const v = vehicles.find(v => v.plate === state.plate);
       state.model = v ? v.model : '';
+      lsSet(LS_KEYS.lastPlate, state.plate);
       await load(state.plate);
       render();
     });
     if (!state.plate && vehicles.length) { state.plate = vehicles[0].plate; state.model = vehicles[0].model; }
 
     root.querySelector('#f-driver').addEventListener('input', (e) => { state.driverName = e.target.value; });
-    root.querySelector('#f-driver').addEventListener('blur', save);
+    root.querySelector('#f-driver').addEventListener('blur', () => { lsSet(LS_KEYS.driverName, state.driverName); save(); });
     root.querySelector('#f-reg').addEventListener('input', (e) => { state.driverReg = e.target.value; });
-    root.querySelector('#f-reg').addEventListener('blur', save);
+    root.querySelector('#f-reg').addEventListener('blur', () => { lsSet(LS_KEYS.driverReg, state.driverReg); save(); });
 
     root.querySelector('#f-km-inicial').addEventListener('input', (e) => { state.kmInicial = e.target.value; });
     root.querySelector('#f-km-inicial').addEventListener('blur', save);
@@ -998,8 +1005,12 @@
   }
 
   (async function init() {
-    state.plate = vehicles[0].plate;
-    state.model = vehicles[0].model;
+    const cachedPlate = lsGet(LS_KEYS.lastPlate);
+    const initialVehicle = vehicles.find(v => v.plate === cachedPlate) || vehicles[0];
+    state.plate = initialVehicle.plate;
+    state.model = initialVehicle.model;
+    state.driverName = lsGet(LS_KEYS.driverName);
+    state.driverReg = lsGet(LS_KEYS.driverReg);
     await load(state.plate);
     render();
   })();
