@@ -1,0 +1,16 @@
+# -------------------------------------------------------------------
+# Modelo de variáveis de ambiente para desenvolvimento LOCAL.
+#
+# Copie este arquivo para ".dev.vars" (sem ".example") e preencha.
+# O .dev.vars NÃO vai pro Git (está no .gitignore) e é lido
+# automaticamente pelo "wrangler pages dev".
+#
+# Em PRODUÇÃO estas mesmas variáveis são cadastradas no painel do
+# Cloudflare Pages (Settings > Environment variables), NÃO neste arquivo.
+# -------------------------------------------------------------------
+
+# Connection string do Neon — use a versão com "-pooler" (São Paulo).
+DATABASE_URL="postgresql://usuario:senha@ep-xxxx-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require"
+
+# Chave da API da Anthropic, usada pela função de leitura do odômetro.
+ANTHROPIC_API_KEY="sk-ant-xxxxxxxx"

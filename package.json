@@ -1,0 +1,16 @@
+{
+  "name": "bdt-app",
+  "version": "0.1.0",
+  "description": "BDT Digital (INEA/DIRSUP) — boletim de trânsito no Cloudflare Pages + Neon",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

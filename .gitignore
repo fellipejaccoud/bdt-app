@@ -1,0 +1,14 @@
+# Dependências
+node_modules/
+
+# Segredos — NUNCA versionar
+.env
+.dev.vars
+*.local
+
+# Build / cache do Wrangler
+.wrangler/
+dist/
+
+# Sistema
+.DS_Store
