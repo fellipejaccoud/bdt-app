@@ -153,6 +153,7 @@
     plate: '', model: '', driverName: '', driverReg: '',
     kmInicial: '', kmInicialPhoto: null, kmInicialStamp: '',
     trechos: [],
+    trechoAberto: null, // trecho iniciado mas ainda não concluído: { origem, horaSaida, odometroInicial, foto, stamp }
     checklist: {}, checklistMode: null, obs: '', fuel: ''
   };
 
@@ -160,7 +161,7 @@
 
   // Cache local (só neste navegador) de nome, matrícula e última placa usada —
   // conveniência de preenchimento, não é fonte de dados do boletim (isso vai pro banco).
-  const LS_KEYS = { driverName: 'bdt:driverName', driverReg: 'bdt:driverReg', lastPlate: 'bdt:lastPlate' };
+  const LS_KEYS = { driverName: 'bdt:driverName', driverReg: 'bdt:driverReg', lastPlate: 'bdt:lastPlate', trechoAberto: 'bdt:trechoAberto' };
   function lsGet(key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } }
   function lsSet(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
 
@@ -437,33 +438,46 @@
           ${renderPhotoBox(state.kmInicialPhoto, 'foto-km-inicial', state.kmInicialStamp)}
         </div>
 
+        ${!state.trechoAberto ? `
         <div class="card">
-          <h2>Registrar trecho</h2>
-          <div class="row2">
-            <div><label>Local de partida</label><input type="text" id="t-origem" placeholder="Ex: Macaé"></div>
-            <div><label>Local de chegada</label><input type="text" id="t-destino" placeholder="Ex: SUPRID"></div>
-          </div>
-          <div class="row2">
-            <div><label>Hora saída</label><input type="time" id="t-hora-saida" value="${nowHM()}"></div>
-            <div><label>Hora chegada</label><input type="time" id="t-hora-chegada" value="${nowHM()}"></div>
-          </div>
+          <h2>Iniciar trecho</h2>
+          <label>Local de partida</label>
+          <input type="text" id="t-origem" placeholder="Ex: Macaé">
+          <label>Hora de saída</label>
+          <input type="time" id="t-hora-saida" value="${nowHM()}">
+          <label>Odômetro na saída (km)</label>
+          <input type="number" id="t-odometro-inicial" placeholder="Ex: 20217">
+          <div class="ai-note" id="t-odometro-inicial-ai-note"></div>
+          ${renderPhotoBox(null, 'foto-trecho-inicio', '')}
+          <button class="btn btn-primary" id="btn-iniciar-trecho">▶ Iniciar trecho</button>
+        </div>` : `
+        <div class="card">
+          <h2>Trecho em andamento</h2>
+          <p class="note-banner" style="margin:0 0 10px;">Saiu de <strong>${escapeHtml(state.trechoAberto.origem)}</strong> às ${state.trechoAberto.horaSaida} · km ${state.trechoAberto.odometroInicial}</p>
+          <label>Local de chegada</label>
+          <input type="text" id="t-destino" placeholder="Ex: SUPRID">
+          <label>Hora de chegada</label>
+          <input type="time" id="t-hora-chegada" value="${nowHM()}">
           <label>Odômetro na chegada (km)</label>
-          <input type="number" id="t-odometro" placeholder="Ex: 4311">
-          <div class="ai-note" id="t-odometro-ai-note"></div>
-          ${renderPhotoBox(null, 'foto-trecho', '')}
-          <button class="btn btn-primary" id="btn-add-trecho">+ Adicionar trecho ao boletim</button>
-        </div>
+          <input type="number" id="t-odometro-final" placeholder="Ex: 20311">
+          <div class="ai-note" id="t-odometro-final-ai-note"></div>
+          ${renderPhotoBox(null, 'foto-trecho-fim', '')}
+          <div class="row2">
+            <button class="btn btn-ghost" id="btn-cancelar-trecho">Cancelar</button>
+            <button class="btn btn-primary" id="btn-concluir-trecho">✓ Concluir trecho</button>
+          </div>
+        </div>`}
 
         <div class="card">
           <h2>Trechos do dia</h2>
           ${state.trechos.length === 0 ? '<p class="empty-note">Nenhum trecho registrado ainda.</p>' :
             state.trechos.map((t, i) => `
               <div class="trecho">
-                ${t.foto ? `<img src="${t.foto}">` : '<div style="width:46px;height:46px;background:var(--line);border-radius:2px;flex-shrink:0;"></div>'}
+                ${(t.fotoChegada || t.fotoPartida) ? `<img src="${t.fotoChegada || t.fotoPartida}">` : '<div style="width:46px;height:46px;background:var(--line);border-radius:2px;flex-shrink:0;"></div>'}
                 <div class="info">
                   <div class="route">${escapeHtml(t.origem)} → ${escapeHtml(t.destino)}</div>
-                  <div class="meta">${t.horaSaida} – ${t.horaChegada} · carimbo: ${t.stamp || '—'}</div>
-                  <div class="km">Odômetro: ${t.odometro} km</div>
+                  <div class="meta">${t.horaSaida} – ${t.horaChegada} · carimbo: ${t.stampChegada || t.stampPartida || '—'}</div>
+                  <div class="km">Odômetro: ${t.odometroInicial ?? '—'} → ${t.odometro} km</div>
                 </div>
                 <button class="btn-danger-text" data-remove="${i}">remover</button>
               </div>`).join('')}
@@ -535,8 +549,10 @@
       </div>`;
   }
 
-  let pendingTrechoFoto = null;
-  let pendingTrechoStamp = '';
+  let pendingInicioFoto = null;
+  let pendingInicioStamp = '';
+  let pendingFimFoto = null;
+  let pendingFimStamp = '';
 
   function attachEvents() {
     root.querySelector('#f-plate').addEventListener('change', async (e) => {
@@ -590,57 +606,134 @@
       });
     }
 
-    const trechoPhotoInput = root.querySelector('#foto-trecho');
-    if (trechoPhotoInput) {
-      trechoPhotoInput.addEventListener('change', async (e) => {
+    // ---------- Iniciar trecho (odômetro de saída, sem precisar do destino ainda) ----------
+    const trechoInicioPhotoInput = root.querySelector('#foto-trecho-inicio');
+    if (trechoInicioPhotoInput) {
+      trechoInicioPhotoInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const resultado = await abrirCropper(file);
+        e.target.value = '';
+        if (!resultado) return; // cancelado no editor de recorte
+        const { dataUrl, stamp } = resultado;
+        pendingInicioFoto = dataUrl;
+        pendingInicioStamp = stamp;
+        const box = trechoInicioPhotoInput.closest('.photo-box');
+        box.classList.add('has-photo');
+        box.innerHTML = `<img src="${dataUrl}"><div class="stamp-note">✓ carimbo: ${stamp}</div>`;
+        toast('Foto anexada');
+
+        setAiNote('t-odometro-inicial-ai-note', 'reading', 'Lendo odômetro na foto…');
+        try {
+          const { digits } = await lerOdometroIA(dataUrl);
+          if (digits) {
+            const odoInput = root.querySelector('#t-odometro-inicial');
+            if (odoInput) odoInput.value = digits;
+            setAiNote('t-odometro-inicial-ai-note', 'ok', `🤖 Lido automaticamente: ${digits} km — confira ou corrija antes de salvar`);
+          } else {
+            setAiNote('t-odometro-inicial-ai-note', 'fail', 'Não consegui ler com segurança — digite manualmente');
+          }
+        } catch (err) {
+          console.error(err);
+          setAiNote('t-odometro-inicial-ai-note', 'fail', 'Falha na leitura automática (' + err.message + ') — digite manualmente');
+        }
+      });
+    }
+
+    const btnIniciarTrecho = root.querySelector('#btn-iniciar-trecho');
+    if (btnIniciarTrecho) {
+      btnIniciarTrecho.addEventListener('click', () => {
+        const origem = root.querySelector('#t-origem').value.trim();
+        const horaSaida = root.querySelector('#t-hora-saida').value;
+        const odometroInicial = root.querySelector('#t-odometro-inicial').value;
+
+        if (!origem) { toast('Preencha o local de partida'); return; }
+        if (!odometroInicial) { toast('Informe a leitura do odômetro'); return; }
+
+        state.trechoAberto = { origem, horaSaida, odometroInicial, foto: pendingInicioFoto, stamp: pendingInicioStamp };
+        pendingInicioFoto = null; pendingInicioStamp = '';
+        lsSet(LS_KEYS.trechoAberto, JSON.stringify(state.trechoAberto));
+        render();
+        toast('Trecho iniciado — conclua quando chegar ao destino');
+      });
+    }
+
+    // ---------- Concluir trecho (destino, hora e odômetro de chegada) ----------
+    const trechoFimPhotoInput = root.querySelector('#foto-trecho-fim');
+    if (trechoFimPhotoInput) {
+      trechoFimPhotoInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         const resultado = await abrirCropper(file);
         e.target.value = '';
         if (!resultado) return; // cancelado no editor de recorte
         const { dataUrl, stamp, hhmm } = resultado;
-        pendingTrechoFoto = dataUrl;
-        pendingTrechoStamp = stamp;
-        const box = trechoPhotoInput.closest('.photo-box');
+        pendingFimFoto = dataUrl;
+        pendingFimStamp = stamp;
+        const box = trechoFimPhotoInput.closest('.photo-box');
         box.classList.add('has-photo');
         box.innerHTML = `<img src="${dataUrl}"><div class="stamp-note">✓ carimbo: ${stamp}</div>`;
         const horaChegadaInput = root.querySelector('#t-hora-chegada');
         if (horaChegadaInput) horaChegadaInput.value = hhmm; // preenche automaticamente, mas continua editável
         toast('Foto anexada — hora de chegada preenchida automaticamente');
 
-        setAiNote('t-odometro-ai-note', 'reading', 'Lendo odômetro na foto…');
+        setAiNote('t-odometro-final-ai-note', 'reading', 'Lendo odômetro na foto…');
         try {
           const { digits } = await lerOdometroIA(dataUrl);
           if (digits) {
-            const odoInput = root.querySelector('#t-odometro');
+            const odoInput = root.querySelector('#t-odometro-final');
             if (odoInput) odoInput.value = digits;
-            setAiNote('t-odometro-ai-note', 'ok', `🤖 Lido automaticamente: ${digits} km — confira ou corrija antes de salvar`);
+            setAiNote('t-odometro-final-ai-note', 'ok', `🤖 Lido automaticamente: ${digits} km — confira ou corrija antes de salvar`);
           } else {
-            setAiNote('t-odometro-ai-note', 'fail', 'Não consegui ler com segurança — digite manualmente');
+            setAiNote('t-odometro-final-ai-note', 'fail', 'Não consegui ler com segurança — digite manualmente');
           }
         } catch (err) {
           console.error(err);
-          setAiNote('t-odometro-ai-note', 'fail', 'Falha na leitura automática (' + err.message + ') — digite manualmente');
+          setAiNote('t-odometro-final-ai-note', 'fail', 'Falha na leitura automática (' + err.message + ') — digite manualmente');
         }
       });
     }
 
-    root.querySelector('#btn-add-trecho').addEventListener('click', async () => {
-      const origem = root.querySelector('#t-origem').value.trim();
-      const destino = root.querySelector('#t-destino').value.trim();
-      const horaSaida = root.querySelector('#t-hora-saida').value;
-      const horaChegada = root.querySelector('#t-hora-chegada').value;
-      const odometro = root.querySelector('#t-odometro').value;
+    const btnCancelarTrecho = root.querySelector('#btn-cancelar-trecho');
+    if (btnCancelarTrecho) {
+      btnCancelarTrecho.addEventListener('click', () => {
+        state.trechoAberto = null;
+        localStorage.removeItem(LS_KEYS.trechoAberto);
+        pendingFimFoto = null; pendingFimStamp = '';
+        render();
+      });
+    }
 
-      if (!origem || !destino) { toast('Preencha local de partida e chegada'); return; }
-      if (!odometro) { toast('Informe a leitura do odômetro'); return; }
+    const btnConcluirTrecho = root.querySelector('#btn-concluir-trecho');
+    if (btnConcluirTrecho) {
+      btnConcluirTrecho.addEventListener('click', async () => {
+        const destino = root.querySelector('#t-destino').value.trim();
+        const horaChegada = root.querySelector('#t-hora-chegada').value;
+        const odometro = root.querySelector('#t-odometro-final').value;
 
-      state.trechos.push({ origem, destino, horaSaida, horaChegada, odometro, foto: pendingTrechoFoto, stamp: pendingTrechoStamp });
-      pendingTrechoFoto = null; pendingTrechoStamp = '';
-      await save();
-      render();
-      toast('Trecho adicionado ao boletim');
-    });
+        if (!destino) { toast('Preencha o local de chegada'); return; }
+        if (!odometro) { toast('Informe a leitura do odômetro'); return; }
+
+        state.trechos.push({
+          origem: state.trechoAberto.origem,
+          destino,
+          horaSaida: state.trechoAberto.horaSaida,
+          horaChegada,
+          odometroInicial: state.trechoAberto.odometroInicial,
+          odometro,
+          fotoPartida: state.trechoAberto.foto || null,
+          stampPartida: state.trechoAberto.stamp || '',
+          fotoChegada: pendingFimFoto,
+          stampChegada: pendingFimStamp
+        });
+        state.trechoAberto = null;
+        localStorage.removeItem(LS_KEYS.trechoAberto);
+        pendingFimFoto = null; pendingFimStamp = '';
+        await save();
+        render();
+        toast('Trecho concluído e adicionado ao boletim');
+      });
+    }
 
     root.querySelectorAll('[data-remove]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -676,6 +769,7 @@
 
     root.querySelector('#btn-pdf').addEventListener('click', async () => {
       if (!state.kmInicial) { toast('Informe o odômetro inicial do dia'); return; }
+      if (state.trechoAberto) { toast('Conclua o trecho em andamento antes de gerar o PDF'); return; }
       if (state.trechos.length === 0) { toast('Registre pelo menos um trecho'); return; }
       if (!state.checklistMode) { toast('Responda se houve alteração no checklist'); return; }
       if (state.checklistMode === 'custom') {
@@ -857,7 +951,10 @@
     // ---------- Página 3: anexo fotográfico (comprovação, não é parte do modelo oficial) ----------
     const photos = [];
     if (state.kmInicialPhoto) photos.push({ label: 'Odômetro inicial do dia', foto: state.kmInicialPhoto, stamp: state.kmInicialStamp, valor: state.kmInicial });
-    state.trechos.filter(t => t.foto).forEach(t => photos.push({ label: `${t.origem} → ${t.destino}`, foto: t.foto, stamp: t.stamp, valor: t.odometro }));
+    state.trechos.forEach(t => {
+      if (t.fotoPartida) photos.push({ label: `${t.origem} → ${t.destino} (partida)`, foto: t.fotoPartida, stamp: t.stampPartida, valor: t.odometroInicial });
+      if (t.fotoChegada) photos.push({ label: `${t.origem} → ${t.destino} (chegada)`, foto: t.fotoChegada, stamp: t.stampChegada, valor: t.odometro });
+    });
 
     if (photos.length > 0) {
       doc.addPage();
@@ -1011,6 +1108,11 @@
     state.model = initialVehicle.model;
     state.driverName = lsGet(LS_KEYS.driverName);
     state.driverReg = lsGet(LS_KEYS.driverReg);
+    const savedTrechoAberto = lsGet(LS_KEYS.trechoAberto);
+    if (savedTrechoAberto) {
+      try { state.trechoAberto = JSON.parse(savedTrechoAberto); }
+      catch (e) { state.trechoAberto = null; }
+    }
     await load(state.plate);
     render();
   })();
