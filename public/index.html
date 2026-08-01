@@ -846,9 +846,11 @@
     // Cabeçalho da tabela
     let y = M + 38;
     const headers = ['LOCAL DA PARTIDA', 'LOCAL DA CHEGADA', 'HORA PARTIDA', 'HORA CHEGADA', 'ODÔMETRO', 'ASSINATURA'];
-    doc.setFillColor(230, 227, 214);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
     headers.forEach((h, i) => {
+      // Redefine a cor a cada célula: desenhar o texto muda a cor de preenchimento
+      // internamente no jsPDF, então sem isso as colunas depois da 1ª saem pretas.
+      doc.setFillColor(230, 227, 214);
       doc.rect(colX[i], y, colW[i], 7, 'FD');
       doc.text(h, colX[i] + colW[i] / 2, y + 4.6, { align: 'center' });
     });
@@ -876,7 +878,8 @@
     const half = CW / 2;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
     doc.rect(M, y, half / 2, 7); doc.text('KM INICIAL', M + 2, y + 4.8);
-    doc.rect(M + half / 2, y, half / 2, 7, 'F'); doc.setFillColor(255,255,255);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(M + half / 2, y, half / 2, 7, 'F');
     doc.setFont('helvetica', 'normal'); doc.text(String(state.kmInicial), M + half / 2 + 2, y + 4.8);
     doc.setFont('helvetica', 'bold');
     doc.rect(M + half, y, half / 2, 7); doc.text('KM PERCORRIDO', M + half + 2, y + 4.8);
