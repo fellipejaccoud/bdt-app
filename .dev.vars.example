@@ -14,3 +14,9 @@ DATABASE_URL="postgresql://usuario:senha@ep-xxxx-pooler.sa-east-1.aws.neon.tech/
 
 # Chave da API da Anthropic, usada pela função de leitura do odômetro.
 ANTHROPIC_API_KEY="sk-ant-xxxxxxxx"
+
+# Senha única compartilhada que protege o site inteiro (tela + API) via
+# HTTP Basic Auth — ver functions/_middleware.js. Sem essas duas variáveis
+# configuradas, o site fica sem proteção nenhuma (não trava o app à toa).
+BASIC_AUTH_USER="dirsup"
+BASIC_AUTH_PASSWORD="troque-esta-senha"
