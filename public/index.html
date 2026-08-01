@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>BDT Digital — INEA/DIRSUP</title>
 </head>
 <body>
@@ -390,7 +391,9 @@
   function odometerDigits(value, size = 6) {
     const str = (value === '' || value === null || value === undefined ? '' : String(value)).padStart(size, ' ');
     let html = '<div class="odo">';
-    for (const ch of str) html += `<div class="digit">${ch === ' ' ? '&nbsp;' : ch}</div>`;
+    // Espaço em branco vira um traço visível (senão as caixinhas ficam todas escuras e sem
+    // nenhum dígito, parecendo uma tarja preta sólida em vez de um odômetro vazio).
+    for (const ch of str) html += `<div class="digit">${ch === ' ' ? '–' : ch}</div>`;
     html += '<span class="unit">km</span></div>';
     return html;
   }
