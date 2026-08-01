@@ -15,9 +15,11 @@ trechos percorridos, e ao final do dia gera um PDF no layout oficial e,
 mensalmente, um relatório em Excel por veículo.
 
 **Escala do projeto:** até ~10 veículos, uso online-first (sem necessidade de
-funcionar offline). Sem login — qualquer pessoa com o link do app pode
-preencher um boletim; a "identidade" de quem preenche fica só no campo de
-texto "Motorista", sem autenticação real.
+funcionar offline). Sem login individual — a "identidade" de quem preenche
+fica só no campo de texto "Motorista", sem autenticação por pessoa. O site
+inteiro é protegido por uma **senha única compartilhada** (ver seção 7.1),
+que a equipe toda usa — isso evita que qualquer pessoa na internet acesse o
+link e leia dados da frota ou use a leitura de odômetro por IA sem limite.
 
 ---
 
@@ -170,9 +172,35 @@ Duas partes:
 - **Build command:** vazio (não há passo de build — o HTML já está pronto).
 - **Build output directory:** `public`.
 - Deploy automático ativado: todo `git push` na `main` publica sozinho.
-- Variáveis de ambiente/segredos (`DATABASE_URL`, `ANTHROPIC_API_KEY`)
-  configuradas em Settings → Variables and secrets, tipo **Secret**
-  (criptografadas, não aparecem em texto puro no painel depois de salvas).
+- Variáveis de ambiente/segredos (`DATABASE_URL`, `ANTHROPIC_API_KEY`,
+  `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`) configuradas em Settings →
+  Variables and secrets, tipo **Secret** (criptografadas, não aparecem em
+  texto puro no painel depois de salvas).
+- **Atenção ao publicar por CLI depois que o Git foi conectado:** rodar
+  `wrangler pages deploy` manualmente cai como *preview*, não como o deploy
+  de produção oficial (que passou a ser só via `git push` na `main`) — pode
+  não refletir variáveis de ambiente recém-cadastradas até um novo push
+  acontecer. Na dúvida, force um deploy novo com
+  `git commit --allow-empty -m "..."` seguido de `git push`.
+
+### 7.1 Proteção por senha única (HTTP Basic Auth)
+
+Desde 2026-08-01, o site inteiro (tela **e** as duas rotas de API) fica
+atrás de autenticação HTTP Basic — um usuário e senha únicos, compartilhados
+por toda a equipe (não é login individual).
+
+- Implementado em `functions/_middleware.js` — roda antes de qualquer outra
+  rota do projeto.
+- Controlado por duas secrets: `BASIC_AUTH_USER` e `BASIC_AUTH_PASSWORD`.
+  **Se qualquer uma das duas não estiver configurada, a proteção fica
+  desativada** (o site funciona igual estava antes) — isso é proposital,
+  para nunca travar o acesso sem querer no meio de um deploy.
+- O navegador mostra a caixa de login nativa do sistema operacional (não é
+  uma tela do app) e guarda a credencial por um tempo, então a equipe não
+  digita a senha toda hora.
+- Motivo de existir: sem isso, qualquer pessoa com o link conseguia ler o
+  relatório mensal (nomes, matrículas, rotas) e chamar a leitura de
+  odômetro por IA sem limite, o que gastaria o saldo pago da conta Anthropic.
 
 **Cloudflare Domains** (domínio):
 - `fellipelab.com` está registrado e gerenciado direto na Cloudflare.
@@ -264,5 +292,8 @@ histórico nem política documentada de apagar projetos por inatividade.
   decisão foi adiar). Se retomar no futuro: autocomplete de endereço +
   botão "usar minha localização atual", sempre com opção de digitar
   manualmente como alternativa.
-- **Login/controle de acesso** — avaliado e **descartado**: preferiu-se
-  simplicidade (sem login) a restringir quem pode preencher um boletim.
+- **Login individual** — avaliado e **descartado**: preferiu-se simplicidade
+  (sem cadastro por pessoa) a autenticar cada motorista. Em vez disso, foi
+  implementada uma senha única compartilhada protegendo o site inteiro (ver
+  seção 7.1) — resolve o risco de exposição pública sem a burocracia de
+  contas individuais.
