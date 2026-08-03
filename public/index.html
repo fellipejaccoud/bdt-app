@@ -158,7 +158,11 @@
     checklist: {}, checklistMode: null, obs: '', fuel: ''
   };
 
-  const vehicles = [{ plate: 'TTV-4J54', model: 'Fiat Cronos' }];
+  // Lista de veículos da frota — carregada do banco (via /api/veiculos) no
+  // init(). Começa vazia; só some o botão de cadastro se o fetch falhar de
+  // um jeito que impeça até isso (aí o app ainda funciona, só sem lista).
+  let vehicles = [];
+  let showNovoVeiculoForm = false;
 
   // Cache local (só neste navegador) de nome, matrícula e última placa usada —
   // conveniência de preenchimento, não é fonte de dados do boletim (isso vai pro banco).
@@ -194,6 +198,19 @@
   // chamador espalhado pelo attachEvents().
   async function save() {}
   async function load(plate) {}
+
+  // Busca a lista de veículos da frota no banco (/api/veiculos) e
+  // atualiza a variável `vehicles` usada pelo <select>.
+  async function carregarVeiculos() {
+    try {
+      const resp = await fetch('/api/veiculos');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      vehicles = data.map(v => ({ plate: v.placa, model: v.modelo || '' }));
+    } catch (e) {
+      console.error('Falha ao carregar veículos', e);
+    }
+  }
 
   // Grava o boletim do dia + trechos no banco (Neon), via /api/bdts.
   // Lança erro se a gravação falhar — quem chama decide como avisar o usuário.
@@ -426,6 +443,18 @@
           <h2>Veículo e responsável</h2>
           <label>Veículo</label>
           <select id="f-plate">${vehicleOptions}</select>
+          ${!showNovoVeiculoForm ? `
+            <button class="btn-danger-text" id="btn-novo-veiculo">+ Cadastrar novo veículo</button>
+          ` : `
+            <div class="row2" style="margin-top:10px;">
+              <div><label>Placa</label><input type="text" id="nv-placa" placeholder="Ex: TTV-4J54"></div>
+              <div><label>Modelo</label><input type="text" id="nv-modelo" placeholder="Ex: Fiat Cronos"></div>
+            </div>
+            <div class="row2">
+              <button class="btn btn-ghost" id="btn-cancelar-veiculo">Cancelar</button>
+              <button class="btn btn-primary" id="btn-salvar-veiculo">Salvar veículo</button>
+            </div>
+          `}
           <div class="row2">
             <div><label>Motorista</label><input type="text" id="f-driver" placeholder="Nome" value="${state.driverName}"></div>
             <div><label>Matrícula</label><input type="text" id="f-reg" placeholder="000000-0" value="${state.driverReg}"></div>
@@ -567,6 +596,52 @@
       render();
     });
     if (!state.plate && vehicles.length) { state.plate = vehicles[0].plate; state.model = vehicles[0].model; }
+
+    const btnNovoVeiculo = root.querySelector('#btn-novo-veiculo');
+    if (btnNovoVeiculo) {
+      btnNovoVeiculo.addEventListener('click', () => {
+        showNovoVeiculoForm = true;
+        render();
+      });
+    }
+    const btnCancelarVeiculo = root.querySelector('#btn-cancelar-veiculo');
+    if (btnCancelarVeiculo) {
+      btnCancelarVeiculo.addEventListener('click', () => {
+        showNovoVeiculoForm = false;
+        render();
+      });
+    }
+    const btnSalvarVeiculo = root.querySelector('#btn-salvar-veiculo');
+    if (btnSalvarVeiculo) {
+      btnSalvarVeiculo.addEventListener('click', async () => {
+        const placa = root.querySelector('#nv-placa').value.trim();
+        const modelo = root.querySelector('#nv-modelo').value.trim();
+        if (!placa) { toast('Informe a placa'); return; }
+
+        btnSalvarVeiculo.disabled = true;
+        try {
+          const resp = await fetch('/api/veiculos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ placa, modelo })
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+
+          await carregarVeiculos();
+          state.plate = data.placa;
+          state.model = data.modelo || '';
+          lsSet(LS_KEYS.lastPlate, state.plate);
+          showNovoVeiculoForm = false;
+          render();
+          toast('Veículo cadastrado');
+        } catch (err) {
+          console.error(err);
+          toast('Não foi possível cadastrar o veículo (' + err.message + ')');
+          btnSalvarVeiculo.disabled = false;
+        }
+      });
+    }
 
     root.querySelector('#f-driver').addEventListener('input', (e) => { state.driverName = e.target.value; });
     root.querySelector('#f-driver').addEventListener('blur', () => { lsSet(LS_KEYS.driverName, state.driverName); save(); });
@@ -1108,8 +1183,9 @@
   }
 
   (async function init() {
+    await carregarVeiculos();
     const cachedPlate = lsGet(LS_KEYS.lastPlate);
-    const initialVehicle = vehicles.find(v => v.plate === cachedPlate) || vehicles[0];
+    const initialVehicle = vehicles.find(v => v.plate === cachedPlate) || vehicles[0] || { plate: '', model: '' };
     state.plate = initialVehicle.plate;
     state.model = initialVehicle.model;
     state.driverName = lsGet(LS_KEYS.driverName);
