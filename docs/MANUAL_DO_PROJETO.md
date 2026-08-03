@@ -54,7 +54,7 @@ link e leia dados da frota ou use a leitura de odômetro por IA sem limite.
 
 | Camada | Tecnologia | Função |
 |---|---|---|
-| Hospedagem + backend | Cloudflare Pages + Pages Functions | Serve o HTML estático e roda as duas rotas de API (`/api/bdts`, `/api/ler-odometro`) como funções serverless |
+| Hospedagem + backend | Cloudflare Pages + Pages Functions | Serve o HTML estático e roda as rotas de API (`/api/bdts`, `/api/ler-odometro`, `/api/veiculos`) como funções serverless |
 | Frontend | HTML + JavaScript puro (sem framework, sem build step) | Formulário, editor de foto, checklist, geração de PDF (jsPDF) e Excel (SheetJS) — tudo roda no navegador |
 | Banco de dados | Neon (Postgres serverless) | Guarda os boletins e trechos definitivos |
 | IA | API da Anthropic (Claude Haiku 4.5) | Lê o número do odômetro na foto — chamada só do backend, nunca do navegador |
@@ -123,6 +123,13 @@ não é Node.js tradicional, mas compatível com boa parte da API padrão.
 |---|---|
 | `POST /api/ler-odometro` | Recebe a foto em base64, chama a API da Anthropic (modelo `claude-haiku-4-5`) pedindo só os dígitos do odômetro, e devolve `{ leitura, ilegivel }`. A foto **nunca é salva** em lugar nenhum — é usada só para essa chamada e descartada. Se a `ANTHROPIC_API_KEY` não estiver configurada, a função retorna erro e o app cai para preenchimento manual (o app inteiro continua funcionando sem essa função). |
 
+### `functions/api/veiculos.js`
+
+| Rota | O que faz |
+|---|---|
+| `GET /api/veiculos` | Lista os veículos ativos (placa + modelo), usados para preencher o seletor no formulário. |
+| `POST /api/veiculos` | Cadastra um veículo novo (`{ placa, modelo }`). Se a placa já existir (mesmo inativa), reativa em vez de duplicar (`ON CONFLICT DO UPDATE`). |
+
 Ambas as funções leem as credenciais de `context.env` (variáveis de
 ambiente), nunca do código-fonte.
 
@@ -130,7 +137,7 @@ ambiente), nunca do código-fonte.
 
 ## 5. Banco de dados (Neon Postgres)
 
-Duas tabelas (`bdt_schema.sql` na raiz do repo):
+Três tabelas:
 
 - **`bdt`** — um registro por boletim/dia/veículo: data, placa, modelo,
   motorista, matrícula, km inicial/final (km percorrido é uma coluna
@@ -139,6 +146,15 @@ Duas tabelas (`bdt_schema.sql` na raiz do repo):
 - **`trecho`** — uma linha por viagem dentro de um boletim (`ON DELETE
   CASCADE`: apagar um boletim apaga os trechos junto), com local de
   partida/chegada, horários e odômetro.
+- **`veiculo`** — cadastro da frota (placa + modelo), usado para preencher o
+  seletor de veículo no formulário. Antes, a placa ficava fixa no código;
+  agora qualquer veículo cadastrado pela tela ("+ Cadastrar novo veículo")
+  aparece na lista. Tem uma coluna `ativo` (soft delete, não usada ainda pela
+  UI) em vez de excluir a linha de fato.
+
+`bdt` e `trecho` estão em `bdt_schema.sql`; `veiculo` está em
+`veiculo_schema.sql` (ambos na raiz do repo, para rodar manualmente no SQL
+Editor da Neon).
 
 A conexão é feita pelo **driver serverless da Neon** (`@neondatabase/serverless`),
 que fala com o Postgres por HTTP em vez de manter uma conexão TCP aberta —
@@ -287,6 +303,10 @@ histórico nem política documentada de apagar projetos por inatividade.
 
 ## 11. Pendências e próximos passos
 
+- **Cadastro de veículos** — implementado (tabela `veiculo`, rota
+  `/api/veiculos`, botão "+ Cadastrar novo veículo" no formulário). Requer
+  rodar `veiculo_schema.sql` uma vez no SQL Editor da Neon (branch
+  `production`) antes de funcionar em produção.
 - **Geolocalização (Google Maps)** — avaliado, mas decidido **não
   implementar por enquanto** (custo estimado de US$ 0 na prática, mas a
   decisão foi adiar). Se retomar no futuro: autocomplete de endereço +
